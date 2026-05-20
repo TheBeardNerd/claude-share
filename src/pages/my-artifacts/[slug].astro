@@ -1,0 +1,222 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import { requireAuth, createSupabaseClient, createServiceClient } from '../../lib/supabase';
+import { DEPARTMENTS } from '../../lib/departments';
+import { scanForPii } from '../../lib/pii-scan';
+import type { ArtifactType, Surface } from '../../lib/types';
+
+const user = await requireAuth(Astro);
+if (!user) return Astro.redirect('/login');
+
+const { slug } = Astro.params;
+const supabase = createSupabaseClient(Astro);
+
+const { data: artifact } = await supabase
+  .from('artifacts')
+  .select('*')
+  .eq('slug', slug)
+  .eq('submitter_user_id', user.id)
+  .single();
+
+if (!artifact) return Astro.redirect('/my-artifacts');
+
+const isPending = artifact.status === 'pending_review';
+
+let success = false;
+const errors: string[] = [];
+
+if (Astro.request.method === 'POST' && !isPending) {
+  const form = await Astro.request.formData();
+
+  const title = String(form.get('title') ?? '').trim();
+  const description = String(form.get('description') ?? '').trim();
+  const type = String(form.get('type') ?? '') as ArtifactType;
+  const surface = String(form.get('surface') ?? '') as Surface;
+  const department = String(form.get('department') ?? '');
+  const tags = String(form.get('tags') ?? '')
+    .split(',')
+    .map((t) => t.trim())
+    .filter(Boolean);
+  const content = String(form.get('content') ?? '').trim();
+  const contextUrl = String(form.get('context_url') ?? '').trim();
+
+  if (!title) errors.push('Title is required.');
+  if (!description) errors.push('Description is required.');
+  if (!['skill', 'command', 'agent', 'prompt', 'web-skill'].includes(type))
+    errors.push('A valid artifact type is required.');
+  if (!['claude-code', 'claude-ai', 'both'].includes(surface))
+    errors.push('A valid surface is required.');
+  if (!department) errors.push('Department is required.');
+  if (!content) errors.push('Content is required.');
+
+  if (errors.length === 0) {
+    const piiResult = scanForPii(content);
+    const service = createServiceClient();
+    const { error: updateError } = await service
+      .from('artifacts')
+      .update({
+        title,
+        description,
+        type,
+        surface,
+        department,
+        tags,
+        content,
+        status: 'pending_review',
+        submitted_by: user.email ?? user.id,
+        pii_flagged: piiResult.flagged,
+        metadata: contextUrl ? { ...artifact.metadata, context_url: contextUrl } : artifact.metadata,
+      })
+      .eq('id', artifact.id);
+
+    if (updateError) {
+      errors.push('Update failed. Please try again.');
+    } else {
+      return Astro.redirect('/my-artifacts');
+    }
+  }
+}
+
+const contextUrl = artifact.metadata?.context_url ?? '';
+---
+
+<Layout title={`Edit — ${artifact.title}`}>
+  <div class="mb-6 flex items-center gap-3">
+    <a href="/my-artifacts" class="text-sm text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100">
+      &larr; My artifacts
+    </a>
+  </div>
+
+  <h1 class="mb-2 text-2xl font-bold">Edit artifact</h1>
+
+  {isPending && (
+    <div class="mb-6 rounded border border-yellow-200 bg-yellow-50 px-4 py-3 text-sm text-yellow-800 dark:border-yellow-800/50 dark:bg-yellow-900/20 dark:text-yellow-400">
+      This artifact is currently pending review and cannot be edited.
+    </div>
+  )}
+
+  <form method="post" class="flex max-w-2xl flex-col gap-5">
+    {errors.length > 0 && (
+      <ul class="space-y-1 rounded border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800/50 dark:bg-red-900/20 dark:text-red-400">
+        {errors.map((e) => <li>{e}</li>)}
+      </ul>
+    )}
+
+    <label class="flex flex-col gap-1 text-sm font-medium">
+      Title
+      <input
+        name="title"
+        required
+        value={artifact.title}
+        disabled={isPending}
+        class="rounded border border-gray-300 bg-white px-3 py-2 text-sm font-normal focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+      />
+    </label>
+
+    <label class="flex flex-col gap-1 text-sm font-medium">
+      Short description (1–2 sentences)
+      <textarea
+        name="description"
+        required
+        rows={2}
+        disabled={isPending}
+        class="rounded border border-gray-300 bg-white px-3 py-2 text-sm font-normal focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+      >{artifact.description}</textarea>
+    </label>
+
+    <div class="grid grid-cols-2 gap-4">
+      <label class="flex flex-col gap-1 text-sm font-medium">
+        Artifact type
+        <select
+          name="type"
+          required
+          disabled={isPending}
+          class="rounded border border-gray-300 bg-white px-3 py-2 text-sm font-normal focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+        >
+          <option value="skill"     selected={artifact.type === 'skill'}>Claude Code Skill</option>
+          <option value="command"   selected={artifact.type === 'command'}>Slash Command</option>
+          <option value="agent"     selected={artifact.type === 'agent'}>Agent</option>
+          <option value="prompt"    selected={artifact.type === 'prompt'}>Prompt Template</option>
+          <option value="web-skill" selected={artifact.type === 'web-skill'}>Claude.ai Web Skill</option>
+        </select>
+      </label>
+
+      <label class="flex flex-col gap-1 text-sm font-medium">
+        Surface
+        <select
+          name="surface"
+          required
+          disabled={isPending}
+          class="rounded border border-gray-300 bg-white px-3 py-2 text-sm font-normal focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+        >
+          <option value="claude-code" selected={artifact.surface === 'claude-code'}>Claude Code</option>
+          <option value="claude-ai"   selected={artifact.surface === 'claude-ai'}>Claude.ai</option>
+          <option value="both"        selected={artifact.surface === 'both'}>Both</option>
+        </select>
+      </label>
+    </div>
+
+    <label class="flex flex-col gap-1 text-sm font-medium">
+      Department
+      <select
+        name="department"
+        required
+        disabled={isPending}
+        class="rounded border border-gray-300 bg-white px-3 py-2 text-sm font-normal focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+      >
+        {DEPARTMENTS.map((d) => (
+          <option value={d.slug} selected={artifact.department === d.slug}>{d.label}</option>
+        ))}
+      </select>
+    </label>
+
+    <label class="flex flex-col gap-1 text-sm font-medium">
+      Tags
+      <span class="font-normal text-xs text-gray-500 dark:text-gray-400">Comma-separated</span>
+      <input
+        name="tags"
+        value={artifact.tags.join(', ')}
+        disabled={isPending}
+        class="rounded border border-gray-300 bg-white px-3 py-2 text-sm font-normal focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+      />
+    </label>
+
+    <label class="flex flex-col gap-1 text-sm font-medium">
+      Content
+      <span class="font-normal text-xs text-gray-500 dark:text-gray-400">YAML, markdown, or prompt body</span>
+      <textarea
+        name="content"
+        required
+        rows={12}
+        disabled={isPending}
+        class="rounded border border-gray-300 bg-white px-3 py-2 font-mono text-sm font-normal focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+      >{artifact.content}</textarea>
+    </label>
+
+    <label class="flex flex-col gap-1 text-sm font-medium">
+      Context link
+      <span class="font-normal text-xs text-gray-500 dark:text-gray-400">Optional — doc, Slack thread, etc.</span>
+      <input
+        type="url"
+        name="context_url"
+        value={contextUrl}
+        disabled={isPending}
+        class="rounded border border-gray-300 bg-white px-3 py-2 text-sm font-normal focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+      />
+    </label>
+
+    {!isPending && (
+      <div class="flex items-center gap-4">
+        <button
+          type="submit"
+          class="rounded bg-blue-600 px-5 py-2 text-sm text-white hover:bg-blue-700"
+        >
+          Save and resubmit
+        </button>
+        <a href="/my-artifacts" class="text-sm text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100">
+          Cancel
+        </a>
+      </div>
+    )}
+  </form>
+</Layout>

@@ -1,0 +1,47 @@
+---
+import '../styles/global.css';
+import ThemeToggle from '../components/ThemeToggle.astro';
+
+interface Props {
+  title: string;
+}
+const { title } = Astro.props;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{title} — ClaudeShare</title>
+    <script is:inline>
+      (function () {
+        try {
+          var stored = localStorage.getItem('theme');
+          var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+          if (stored === 'dark' || (!stored && prefersDark)) {
+            document.documentElement.classList.add('dark');
+          }
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+  <body class="min-h-screen bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-gray-100">
+    <header class="border-b border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
+      <div class="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
+        <a href="/" class="text-lg font-semibold tracking-tight">ClaudeShare</a>
+        <nav class="flex items-center gap-6 text-sm">
+          <a href="/" class="text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100">Browse</a>
+          <a href="/submit" class="text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100">Submit</a>
+          <a href="/my-artifacts" class="text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100">My artifacts</a>
+          <a href="/feedback" class="text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100">Feedback</a>
+          <a href="/admin/review" class="text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100">Review</a>
+          <ThemeToggle />
+        </nav>
+      </div>
+    </header>
+    <main class="mx-auto max-w-6xl px-4 py-8">
+      <slot />
+    </main>
+  </body>
+</html>

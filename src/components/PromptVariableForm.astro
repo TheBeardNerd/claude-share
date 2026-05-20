@@ -1,0 +1,67 @@
+---
+interface Props {
+  content: string;
+  variables: string[];
+}
+const { content, variables } = Astro.props;
+---
+
+<div>
+  {variables.length > 0 && (
+    <div class="mb-4 rounded border border-blue-200 bg-blue-50 p-4 dark:border-blue-800/50 dark:bg-blue-900/20">
+      <h3 class="mb-3 text-sm font-semibold">Fill in placeholders</h3>
+      <div class="flex flex-col gap-3">
+        {variables.map((v) => (
+          <label class="flex flex-col gap-1 text-sm font-medium">
+            {v}
+            <input
+              type="text"
+              data-var={v}
+              class="var-input rounded border border-gray-300 bg-white px-3 py-2 text-sm font-normal focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+              placeholder={`Enter ${v}...`}
+            />
+          </label>
+        ))}
+      </div>
+    </div>
+  )}
+
+  <div class="relative">
+    <pre class="overflow-x-auto rounded bg-gray-900 p-4 text-sm text-gray-100"><code id="prompt-preview">{content}</code></pre>
+    <button
+      type="button"
+      id="copy-prompt-btn"
+      class="absolute right-3 top-3 rounded bg-gray-700 px-3 py-1 text-xs text-gray-200 hover:bg-gray-600"
+    >
+      Copy completed prompt
+    </button>
+  </div>
+</div>
+
+<script define:vars={{ content, variables }}>
+  const preview = document.getElementById('prompt-preview');
+  const copyBtn = document.getElementById('copy-prompt-btn');
+  const inputs = document.querySelectorAll('.var-input');
+
+  function buildPrompt() {
+    let result = content;
+    inputs.forEach((input) => {
+      const varName = input.dataset.var ?? '';
+      const value = input.value || `{${varName}}`;
+      result = result.split(`{${varName}}`).join(value);
+    });
+    return result;
+  }
+
+  inputs.forEach((input) => {
+    input.addEventListener('input', () => {
+      if (preview) preview.textContent = buildPrompt();
+    });
+  });
+
+  copyBtn?.addEventListener('click', async () => {
+    await navigator.clipboard.writeText(buildPrompt());
+    copyBtn.textContent = 'Copied!';
+    setTimeout(() => { copyBtn.textContent = 'Copy completed prompt'; }, 2000);
+  });
+</script>

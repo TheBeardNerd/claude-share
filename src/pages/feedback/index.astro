@@ -1,0 +1,168 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import { requireAuth, createSupabaseClient } from '../../lib/supabase';
+
+const user = await requireAuth(Astro);
+if (!user) return Astro.redirect('/login');
+
+const supabase = createSupabaseClient(Astro);
+const errors: string[] = [];
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const title = String(form.get('title') ?? '').trim();
+  const body = String(form.get('body') ?? '').trim();
+  const category = String(form.get('category') ?? 'general');
+
+  if (!title) errors.push('Title is required.');
+
+  if (errors.length === 0) {
+    const { error } = await supabase.from('feedback').insert({
+      title,
+      body: body || null,
+      category,
+      submitter_user_id: user.id,
+    });
+    if (error) {
+      errors.push('Submission failed. Please try again.');
+    } else {
+      return Astro.redirect('/feedback');
+    }
+  }
+}
+
+const { data: items } = await supabase
+  .from('feedback')
+  .select('*, feedback_votes(user_id)')
+  .order('created_at', { ascending: false });
+
+type FeedbackItem = {
+  id: string;
+  title: string;
+  body: string | null;
+  category: string;
+  created_at: string;
+  feedback_votes: { user_id: string }[];
+};
+
+const sorted = ((items ?? []) as FeedbackItem[]).sort(
+  (a, b) => b.feedback_votes.length - a.feedback_votes.length
+);
+
+const categoryLabel: Record<string, string> = {
+  feature: 'Feature request',
+  bug: 'Bug report',
+  general: 'General',
+};
+
+const categoryBadge: Record<string, string> = {
+  feature: 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+  bug:     'bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400',
+  general: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
+};
+---
+
+<Layout title="Feedback">
+  <div class="mb-6">
+    <h1 class="text-2xl font-bold">Feedback</h1>
+    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+      Share ideas or report issues. Upvote items you care about.
+    </p>
+  </div>
+
+  <details class="mb-8 rounded border border-gray-200 dark:border-gray-800" open={errors.length > 0}>
+    <summary class="cursor-pointer select-none px-4 py-3 text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-800/50">
+      Submit feedback
+    </summary>
+    <form method="post" class="flex flex-col gap-4 border-t border-gray-200 px-4 py-4 dark:border-gray-800">
+      {errors.length > 0 && (
+        <ul class="space-y-1 rounded border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800/50 dark:bg-red-900/20 dark:text-red-400">
+          {errors.map((e) => <li>{e}</li>)}
+        </ul>
+      )}
+
+      <label class="flex flex-col gap-1 text-sm font-medium">
+        Title
+        <input
+          name="title"
+          required
+          placeholder="Short summary of your idea or issue"
+          class="rounded border border-gray-300 bg-white px-3 py-2 text-sm font-normal focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+        />
+      </label>
+
+      <label class="flex flex-col gap-1 text-sm font-medium">
+        Details
+        <span class="font-normal text-xs text-gray-500 dark:text-gray-400">Optional</span>
+        <textarea
+          name="body"
+          rows={3}
+          class="rounded border border-gray-300 bg-white px-3 py-2 text-sm font-normal focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+        />
+      </label>
+
+      <label class="flex flex-col gap-1 text-sm font-medium">
+        Category
+        <select
+          name="category"
+          class="w-48 rounded border border-gray-300 bg-white px-3 py-2 text-sm font-normal focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+        >
+          <option value="feature">Feature request</option>
+          <option value="bug">Bug report</option>
+          <option value="general">General</option>
+        </select>
+      </label>
+
+      <button
+        type="submit"
+        class="self-start rounded bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700"
+      >
+        Submit
+      </button>
+    </form>
+  </details>
+
+  {sorted.length === 0 ? (
+    <p class="text-sm text-gray-500 dark:text-gray-400">No feedback yet. Be the first to submit something.</p>
+  ) : (
+    <div class="divide-y divide-gray-200 rounded border border-gray-200 dark:divide-gray-800 dark:border-gray-800">
+      {sorted.map((item) => {
+        const votes = item.feedback_votes.length;
+        const hasVoted = item.feedback_votes.some((v) => v.user_id === user.id);
+        return (
+          <div class="flex gap-4 px-4 py-4">
+            <form method="post" action={`/api/feedback/${item.id}/vote`} class="shrink-0">
+              <button
+                type="submit"
+                title={hasVoted ? 'Remove vote' : 'Upvote'}
+                class={`flex w-12 flex-col items-center rounded border py-2 text-sm font-semibold transition-colors ${
+                  hasVoted
+                    ? 'border-blue-600 bg-blue-600 text-white hover:bg-blue-700'
+                    : 'border-gray-300 text-gray-500 hover:border-blue-400 hover:text-blue-600 dark:border-gray-700 dark:text-gray-400 dark:hover:border-blue-500 dark:hover:text-blue-400'
+                }`}
+              >
+                <span class="text-xs leading-none">▲</span>
+                <span class="mt-0.5">{votes}</span>
+              </button>
+            </form>
+
+            <div class="min-w-0 flex-1">
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="text-sm font-medium">{item.title}</span>
+                <span class={`rounded px-2 py-0.5 text-xs font-medium ${categoryBadge[item.category] ?? categoryBadge.general}`}>
+                  {categoryLabel[item.category] ?? item.category}
+                </span>
+              </div>
+              {item.body && (
+                <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">{item.body}</p>
+              )}
+              <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                {new Date(item.created_at).toLocaleDateString()}
+              </p>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  )}
+</Layout>

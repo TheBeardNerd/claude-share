@@ -1,0 +1,68 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import { requireAuth, createSupabaseClient } from '../../lib/supabase';
+
+const user = await requireAuth(Astro);
+if (!user) return Astro.redirect('/login');
+
+const supabase = createSupabaseClient(Astro);
+const { data: artifacts } = await supabase
+  .from('artifacts')
+  .select('id, slug, title, type, status, created_at')
+  .eq('submitter_user_id', user.id)
+  .order('created_at', { ascending: false });
+
+const statusConfig: Record<string, { label: string; classes: string }> = {
+  pending_review: { label: 'Pending review', classes: 'bg-yellow-50 text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-400' },
+  published:      { label: 'Published',      classes: 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400' },
+  rejected:       { label: 'Rejected',       classes: 'bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400' },
+  draft:          { label: 'Changes requested', classes: 'bg-orange-50 text-orange-700 dark:bg-orange-900/20 dark:text-orange-400' },
+};
+---
+
+<Layout title="My artifacts">
+  <div class="mb-6 flex items-center justify-between">
+    <h1 class="text-2xl font-bold">My artifacts</h1>
+    <a href="/submit" class="rounded bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700">
+      Submit new
+    </a>
+  </div>
+
+  {(!artifacts || artifacts.length === 0) ? (
+    <p class="text-sm text-gray-500 dark:text-gray-400">
+      You haven't submitted any artifacts yet. <a href="/submit" class="text-blue-600 hover:underline dark:text-blue-400">Submit one now.</a>
+    </p>
+  ) : (
+    <div class="divide-y divide-gray-200 rounded border border-gray-200 dark:divide-gray-800 dark:border-gray-800">
+      {artifacts.map((artifact) => {
+        const s = statusConfig[artifact.status] ?? { label: artifact.status, classes: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400' };
+        return (
+          <div class="flex items-center justify-between gap-4 px-4 py-3">
+            <div class="min-w-0">
+              <div class="flex items-center gap-2">
+                <span class="truncate text-sm font-medium">{artifact.title}</span>
+                <span class={`shrink-0 rounded px-2 py-0.5 text-xs font-medium ${s.classes}`}>{s.label}</span>
+              </div>
+              <p class="mt-0.5 text-xs text-gray-400 dark:text-gray-500">
+                {artifact.type} &middot; {new Date(artifact.created_at).toLocaleDateString()}
+              </p>
+            </div>
+            <div class="flex shrink-0 items-center gap-3">
+              {artifact.status === 'published' && (
+                <a href={`/artifacts/${artifact.slug}`} class="text-xs text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100">
+                  View
+                </a>
+              )}
+              <a
+                href={`/my-artifacts/${artifact.slug}`}
+                class="text-xs text-blue-600 hover:underline dark:text-blue-400"
+              >
+                Edit
+              </a>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  )}
+</Layout>

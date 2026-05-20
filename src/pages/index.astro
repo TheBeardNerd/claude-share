@@ -1,0 +1,82 @@
+---
+import Layout from '../layouts/Layout.astro';
+import ArtifactCard from '../components/ArtifactCard.astro';
+import ArtifactFilters from '../components/ArtifactFilters.astro';
+import { createSupabaseClient, requireAuth } from '../lib/supabase';
+import type { Artifact } from '../lib/types';
+
+const user = await requireAuth(Astro);
+if (!user) return Astro.redirect('/login');
+
+const { searchParams } = Astro.url;
+const typeFilter = searchParams.get('type') ?? '';
+const departmentFilter = searchParams.get('department') ?? '';
+const surfaceFilter = searchParams.get('surface') ?? '';
+const q = searchParams.get('q') ?? '';
+const sort = searchParams.get('sort') ?? 'newest';
+
+const supabase = createSupabaseClient(Astro);
+
+let query = supabase
+  .from('artifacts')
+  .select('id,slug,type,surface,title,description,tags,department,published_at')
+  .eq('status', 'published');
+
+if (typeFilter) query = query.eq('type', typeFilter);
+if (departmentFilter) query = query.eq('department', departmentFilter);
+if (surfaceFilter) query = query.eq('surface', surfaceFilter);
+if (q) query = query.textSearch('fts', q, { type: 'websearch' });
+if (sort === 'updated') {
+  query = query.order('updated_at', { ascending: false });
+} else {
+  query = query.order('published_at', { ascending: false });
+}
+
+const { data: artifacts, error } = await query;
+---
+
+<Layout title="Browse">
+  <div class="mb-6">
+    <h1 class="text-2xl font-bold">Browse artifacts</h1>
+    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+      Discover skills, commands, agents, and prompt templates shared by your colleagues.
+    </p>
+  </div>
+
+  <form method="get" id="filter-form" class="mb-4 flex gap-3">
+    <input
+      type="search"
+      name="q"
+      value={q}
+      placeholder="Search..."
+      class="flex-1 rounded border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+    />
+    <button
+      type="submit"
+      class="rounded bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700"
+    >
+      Search
+    </button>
+  </form>
+
+  <ArtifactFilters
+    type={typeFilter}
+    department={departmentFilter}
+    surface={surfaceFilter}
+    sort={sort}
+  />
+
+  {error && (
+    <p class="mt-4 text-sm text-red-600">Failed to load artifacts.</p>
+  )}
+
+  {!error && artifacts?.length === 0 && (
+    <p class="mt-8 text-sm text-gray-500 dark:text-gray-400">No artifacts found.</p>
+  )}
+
+  <div class="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+    {artifacts?.map((artifact: Artifact) => (
+      <ArtifactCard artifact={artifact} />
+    ))}
+  </div>
+</Layout>

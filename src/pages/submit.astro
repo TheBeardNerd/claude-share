@@ -1,0 +1,255 @@
+---
+import Layout from '../layouts/Layout.astro';
+import { requireAuth, createSupabaseClient, createServiceClient } from '../lib/supabase';
+import { DEPARTMENTS } from '../lib/departments';
+import { scanForPii } from '../lib/pii-scan';
+import type { ArtifactType, Surface } from '../lib/types';
+
+const user = await requireAuth(Astro);
+if (!user) return Astro.redirect('/login');
+
+let success = false;
+const errors: string[] = [];
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+
+  const title = String(form.get('title') ?? '').trim();
+  const description = String(form.get('description') ?? '').trim();
+  const type = String(form.get('type') ?? '') as ArtifactType;
+  const surface = String(form.get('surface') ?? '') as Surface;
+  const department = String(form.get('department') ?? '');
+  const tags = String(form.get('tags') ?? '')
+    .split(',')
+    .map((t) => t.trim())
+    .filter(Boolean);
+  const content = String(form.get('content') ?? '').trim();
+  const contextUrl = String(form.get('context_url') ?? '').trim();
+  const certified = form.get('certified') === 'on';
+
+  if (!title) errors.push('Title is required.');
+  if (!description) errors.push('Description is required.');
+  if (!['skill', 'command', 'agent', 'prompt', 'web-skill'].includes(type))
+    errors.push('A valid artifact type is required.');
+  if (!['claude-code', 'claude-ai', 'both'].includes(surface))
+    errors.push('A valid surface is required.');
+  if (!department) errors.push('Department is required.');
+  if (!content) errors.push('Content is required.');
+  if (!certified)
+    errors.push(
+      'You must certify that this submission contains no personal data or credentials.'
+    );
+  if (contextUrl) {
+    try {
+      const parsed = new URL(contextUrl);
+      if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:')
+        errors.push('Context link must be an http or https URL.');
+    } catch {
+      errors.push('Context link is not a valid URL.');
+    }
+  }
+
+  if (errors.length === 0) {
+    const piiResult = scanForPii(content);
+    const slug = title
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '');
+
+    const supabase = createSupabaseClient(Astro);
+
+    const { data: existing } = await supabase
+      .from('artifacts')
+      .select('id, status, submitter_user_id')
+      .eq('slug', slug)
+      .maybeSingle();
+
+    let insertError = null;
+
+    if (existing) {
+      if (existing.submitter_user_id === user.id && existing.status === 'rejected') {
+        const service = createServiceClient();
+        const { error } = await service
+          .from('artifacts')
+          .update({
+            title, description, type, surface, department, tags, content,
+            status: 'pending_review',
+            submitted_by: 'employee',
+            pii_flagged: piiResult.flagged,
+            metadata: contextUrl ? { context_url: contextUrl } : {},
+          })
+          .eq('id', existing.id);
+        insertError = error;
+      } else if (existing.status === 'pending_review') {
+        errors.push('This artifact is already pending review.');
+      } else {
+        errors.push('An artifact with this title already exists.');
+      }
+    } else {
+      const { error } = await supabase.from('artifacts').insert({
+        slug,
+        title,
+        description,
+        type,
+        surface,
+        department,
+        tags,
+        content,
+        status: 'pending_review',
+        submitted_by: 'employee',
+        submitter_user_id: user.id,
+        pii_flagged: piiResult.flagged,
+        metadata: contextUrl ? { context_url: contextUrl } : {},
+        current_version: 0,
+      });
+      insertError = error;
+    }
+
+    if (insertError) {
+      errors.push('Submission failed. Please try again.');
+    } else if (errors.length === 0) {
+      success = true;
+
+      if (import.meta.env.SLACK_WEBHOOK_URL) {
+        const flagNote = piiResult.flagged
+          ? ` *PII flagged:* ${piiResult.flags.map((f) => f.pattern).join(', ')}`
+          : '';
+        await fetch(import.meta.env.SLACK_WEBHOOK_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            text: `New artifact pending review: *${title}* (${type})${flagNote}`,
+          }),
+        }).catch(() => {});
+      }
+    }
+  }
+}
+---
+
+<Layout title="Submit">
+  <h1 class="mb-6 text-2xl font-bold">Submit an artifact</h1>
+
+  {success ? (
+    <div class="rounded border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800 dark:border-green-800/50 dark:bg-green-900/20 dark:text-green-400">
+      Submitted for review. You will be notified once it is approved or if changes are needed.
+    </div>
+  ) : (
+    <form method="post" class="flex max-w-2xl flex-col gap-5">
+      {errors.length > 0 && (
+        <ul class="space-y-1 rounded border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800/50 dark:bg-red-900/20 dark:text-red-400">
+          {errors.map((e) => <li>{e}</li>)}
+        </ul>
+      )}
+
+      <label class="flex flex-col gap-1 text-sm font-medium">
+        Title
+        <input
+          name="title"
+          required
+          class="rounded border border-gray-300 bg-white px-3 py-2 text-sm font-normal focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+        />
+      </label>
+
+      <label class="flex flex-col gap-1 text-sm font-medium">
+        Short description (1–2 sentences)
+        <textarea
+          name="description"
+          required
+          rows={2}
+          class="rounded border border-gray-300 bg-white px-3 py-2 text-sm font-normal focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+        />
+      </label>
+
+      <div class="grid grid-cols-2 gap-4">
+        <label class="flex flex-col gap-1 text-sm font-medium">
+          Artifact type
+          <select
+            name="type"
+            required
+            class="rounded border border-gray-300 bg-white px-3 py-2 text-sm font-normal focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+          >
+            <option value="">Select...</option>
+            <option value="skill">Claude Code Skill</option>
+            <option value="command">Slash Command</option>
+            <option value="agent">Agent</option>
+            <option value="prompt">Prompt Template</option>
+            <option value="web-skill">Claude.ai Web Skill</option>
+          </select>
+        </label>
+
+        <label class="flex flex-col gap-1 text-sm font-medium">
+          Surface
+          <select
+            name="surface"
+            required
+            class="rounded border border-gray-300 bg-white px-3 py-2 text-sm font-normal focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+          >
+            <option value="">Select...</option>
+            <option value="claude-code">Claude Code</option>
+            <option value="claude-ai">Claude.ai</option>
+            <option value="both">Both</option>
+          </select>
+        </label>
+      </div>
+
+      <label class="flex flex-col gap-1 text-sm font-medium">
+        Department
+        <select
+          name="department"
+          required
+          class="rounded border border-gray-300 bg-white px-3 py-2 text-sm font-normal focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+        >
+          <option value="">Select...</option>
+          {DEPARTMENTS.map((d) => <option value={d.slug}>{d.label}</option>)}
+        </select>
+      </label>
+
+      <label class="flex flex-col gap-1 text-sm font-medium">
+        Tags
+        <span class="font-normal text-gray-500 text-xs dark:text-gray-400">Comma-separated</span>
+        <input
+          name="tags"
+          placeholder="stats, basketball, query"
+          class="rounded border border-gray-300 bg-white px-3 py-2 text-sm font-normal focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+        />
+      </label>
+
+      <label class="flex flex-col gap-1 text-sm font-medium">
+        Content
+        <span class="font-normal text-gray-500 text-xs dark:text-gray-400">YAML, markdown, or prompt body</span>
+        <textarea
+          name="content"
+          required
+          rows={12}
+          class="rounded border border-gray-300 bg-white px-3 py-2 font-mono text-sm font-normal focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+        />
+      </label>
+
+      <label class="flex flex-col gap-1 text-sm font-medium">
+        Context link
+        <span class="font-normal text-gray-500 text-xs dark:text-gray-400">Optional — doc, Slack thread, etc.</span>
+        <input
+          type="url"
+          name="context_url"
+          class="rounded border border-gray-300 bg-white px-3 py-2 text-sm font-normal focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+        />
+      </label>
+
+      <label class="flex items-start gap-3 text-sm">
+        <input type="checkbox" name="certified" required class="mt-0.5" />
+        <span>
+          I confirm this submission does not contain personal data, credentials, or confidential
+          client information.
+        </span>
+      </label>
+
+      <button
+        type="submit"
+        class="self-start rounded bg-blue-600 px-5 py-2 text-sm text-white hover:bg-blue-700"
+      >
+        Submit for review
+      </button>
+    </form>
+  )}
+</Layout>

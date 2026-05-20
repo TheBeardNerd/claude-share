@@ -1,0 +1,61 @@
+---
+import Layout from '../layouts/Layout.astro';
+import { createSupabaseClient } from '../lib/supabase';
+
+let formError = '';
+let sent = false;
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const email = String(form.get('email') ?? '').trim().toLowerCase();
+
+  if (!email.endsWith('@grizzlies.com')) {
+    formError = 'Sign-in is restricted to @grizzlies.com email addresses.';
+  } else {
+    const supabase = createSupabaseClient(Astro);
+    const { error } = await supabase.auth.signInWithOtp({
+      email,
+      options: {
+        emailRedirectTo: `${import.meta.env.PUBLIC_SITE_URL}/auth/callback`,
+      },
+    });
+    if (error) {
+      formError = 'Something went wrong. Please try again.';
+    } else {
+      sent = true;
+    }
+  }
+}
+---
+
+<Layout title="Sign in">
+  <div class="mx-auto max-w-sm pt-16">
+    <h1 class="mb-6 text-xl font-bold">Sign in to ClaudeShare</h1>
+
+    {sent ? (
+      <p class="rounded border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800 dark:border-green-800/50 dark:bg-green-900/20 dark:text-green-400">
+        Check your inbox — we sent a magic link to your email.
+      </p>
+    ) : (
+      <form method="post" class="flex flex-col gap-4">
+        <label class="text-sm font-medium">
+          Work email
+          <input
+            type="email"
+            name="email"
+            required
+            placeholder="you@grizzlies.com"
+            class="mt-1 block w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm font-normal focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+          />
+        </label>
+        {formError && <p class="text-sm text-red-600 dark:text-red-400">{formError}</p>}
+        <button
+          type="submit"
+          class="rounded bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700"
+        >
+          Send magic link
+        </button>
+      </form>
+    )}
+  </div>
+</Layout>

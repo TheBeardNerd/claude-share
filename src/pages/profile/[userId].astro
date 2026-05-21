@@ -135,16 +135,7 @@ const hasName = name !== 'Unknown';
     {isOwnProfile && (
       <div id="profile-edit" class={startEditing ? '' : 'hidden'}>
         <form method="post" class="flex flex-col gap-4">
-          <div class="flex items-center justify-between">
-            <h2 class="text-base font-semibold">Edit profile</h2>
-            <button
-              id="cancel-btn"
-              type="button"
-              class="text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-            >
-              Cancel
-            </button>
-          </div>
+          <h2 class="text-base font-semibold">Edit profile</h2>
 
           <div class="grid grid-cols-2 gap-4">
             <label class="flex flex-col gap-1 text-sm font-medium">
@@ -215,7 +206,7 @@ const hasName = name !== 'Unknown';
             <button
               type="button"
               id="cancel-btn-2"
-              class="text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+              class="rounded border border-gray-300 px-4 py-2 text-sm text-gray-600 hover:border-gray-400 hover:text-gray-900 dark:border-gray-700 dark:text-gray-400 dark:hover:border-gray-500 dark:hover:text-gray-100"
             >
               Cancel
             </button>
@@ -241,7 +232,6 @@ const hasName = name !== 'Unknown';
     }
 
     document.getElementById('edit-btn')?.addEventListener('click', showEdit);
-    document.getElementById('cancel-btn')?.addEventListener('click', showView);
     document.getElementById('cancel-btn-2')?.addEventListener('click', showView);
   </script>
 )}

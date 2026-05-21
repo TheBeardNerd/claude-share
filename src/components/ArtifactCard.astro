@@ -1,5 +1,6 @@
 ---
 import type { Artifact } from '../lib/types';
+import { SURFACE_LABELS } from '../lib/types';
 
 interface Props {
   artifact: Artifact;
@@ -23,7 +24,7 @@ const typeLabels: Record<string, string> = {
     <span class="rounded bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
       {typeLabels[artifact.type] ?? artifact.type}
     </span>
-    <span class="text-xs text-gray-400 dark:text-gray-500">{artifact.surface}</span>
+    <span class="text-xs text-gray-400 dark:text-gray-500">{SURFACE_LABELS[artifact.surface] ?? artifact.surface}</span>
   </div>
   <h2 class="text-sm font-semibold leading-snug">{artifact.title}</h2>
   <p class="mt-1 line-clamp-2 text-xs text-gray-500 dark:text-gray-400">{artifact.description}</p>

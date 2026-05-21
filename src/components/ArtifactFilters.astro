@@ -46,7 +46,7 @@ const { type, department, surface, sort } = Astro.props;
     <option value="" selected={!surface}>All surfaces</option>
     <option value="claude-code" selected={surface === 'claude-code'}>Claude Code</option>
     <option value="claude-ai" selected={surface === 'claude-ai'}>Claude.ai</option>
-    <option value="both" selected={surface === 'both'}>Both</option>
+    <option value="all" selected={surface === 'all'}>All Surfaces</option>
   </select>
 
   <select

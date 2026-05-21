@@ -31,7 +31,7 @@ if (Astro.request.method === 'POST') {
   if (!description) errors.push('Description is required.');
   if (!['skill', 'command', 'agent', 'prompt', 'web-skill'].includes(type))
     errors.push('A valid artifact type is required.');
-  if (!['claude-code', 'claude-ai', 'both'].includes(surface))
+  if (!['claude-code', 'claude-ai', 'all'].includes(surface))
     errors.push('A valid surface is required.');
   if (!department) errors.push('Department is required.');
   if (!content) errors.push('Content is required.');
@@ -188,7 +188,7 @@ if (Astro.request.method === 'POST') {
             <option value="">Select...</option>
             <option value="claude-code">Claude Code</option>
             <option value="claude-ai">Claude.ai</option>
-            <option value="both">Both</option>
+            <option value="all">All Surfaces</option>
           </select>
         </label>
       </div>

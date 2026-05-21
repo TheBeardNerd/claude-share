@@ -5,6 +5,7 @@ import PromptVariableForm from '../../components/PromptVariableForm.astro';
 import { requireAuth, createSupabaseClient } from '../../lib/supabase';
 import { getDepartmentLabel } from '../../lib/departments';
 import type { Artifact, ArtifactVersion } from '../../lib/types';
+import { SURFACE_LABELS } from '../../lib/types';
 
 const user = await requireAuth(Astro);
 if (!user) return Astro.redirect('/login');
@@ -45,13 +46,13 @@ const targetDirs: Record<string, string> = {
 ---
 
 <Layout title={artifact.title}>
-  <div class="max-w-3xl">
+  <div class="max-w-4xl">
     <div class="mb-4 flex flex-wrap items-center gap-2">
       <span class="rounded-full bg-blue-100 px-3 py-1 text-xs font-medium text-blue-800 dark:bg-blue-900/30 dark:text-blue-400">
         {typeLabels[artifact.type] ?? artifact.type}
       </span>
       <span class="rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-600 dark:bg-gray-800 dark:text-gray-400">
-        {artifact.surface}
+        {SURFACE_LABELS[artifact.surface] ?? artifact.surface}
       </span>
       {artifact.department && (
         <span class="rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-600 dark:bg-gray-800 dark:text-gray-400">
@@ -85,7 +86,7 @@ const targetDirs: Record<string, string> = {
       />
     ) : (
       <div class="relative">
-        <pre class="overflow-x-auto rounded bg-gray-900 p-4 text-sm text-gray-100"><code>{artifact.content}</code></pre>
+        <pre class="whitespace-pre-wrap break-words rounded bg-gray-900 p-4 text-sm text-gray-100"><code>{artifact.content}</code></pre>
         <CopyButton content={artifact.content} />
       </div>
     )}
@@ -125,17 +126,32 @@ const targetDirs: Record<string, string> = {
     )}
 
     {versions && versions.length > 0 && (
-      <div class="mt-8">
-        <h2 class="mb-3 text-sm font-semibold">Version history</h2>
-        <ul class="space-y-2 text-sm">
-          {versions.map((v: ArtifactVersion) => (
-            <li class="flex items-baseline gap-4">
-              <span class="w-8 font-medium">v{v.version}</span>
-              <span class="text-xs text-gray-400 dark:text-gray-500">{new Date(v.created_at).toLocaleDateString()}</span>
-              {v.change_note && <span class="text-gray-600 dark:text-gray-400">{v.change_note}</span>}
-            </li>
+      <div class="mt-10 border-t border-gray-200 pt-8 dark:border-gray-800">
+        <h2 class="mb-4 text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+          Version History
+        </h2>
+        <div class="space-y-1">
+          {versions.map((v: ArtifactVersion, i: number) => (
+            <div class="rounded-lg px-3 py-2 transition-colors hover:bg-gray-50 dark:hover:bg-gray-800/40">
+              <div class="flex flex-wrap items-center gap-4">
+                <span class="font-mono text-sm font-semibold text-gray-900 dark:text-gray-100">
+                  v{v.version}
+                </span>
+                <span class="text-xs text-gray-400 dark:text-gray-500">
+                  {new Date(v.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                </span>
+                {i === 0 && (
+                  <span class="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-600 dark:bg-blue-900/20 dark:text-blue-400">
+                    current
+                  </span>
+                )}
+              </div>
+              {v.change_note && (
+                <p class="mt-0.5 text-sm text-gray-600 dark:text-gray-400">{v.change_note}</p>
+              )}
+            </div>
           ))}
-        </ul>
+        </div>
       </div>
     )}
   </div>

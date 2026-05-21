@@ -1,11 +1,16 @@
 ---
 import '../styles/global.css';
-import ThemeToggle from '../components/ThemeToggle.astro';
+import { requireAuth } from '../lib/supabase';
+import { gravatarUrl } from '../lib/gravatar';
 
 interface Props {
   title: string;
 }
 const { title } = Astro.props;
+
+const user = await requireAuth(Astro);
+const avatarSrc = user ? gravatarUrl(user.email!, 64) : null;
+const profileHref = user ? `/profile/${user.id}` : '/login';
 ---
 
 <!doctype html>
@@ -36,7 +41,57 @@ const { title } = Astro.props;
           <a href="/my-artifacts" class="text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100">My artifacts</a>
           <a href="/feedback" class="text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100">Feedback</a>
           <a href="/admin/review" class="text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100">Review</a>
-          <ThemeToggle />
+
+          {/* Profile avatar + dropdown */}
+          <div class="relative" id="profile-menu-root">
+            <button
+              id="profile-menu-trigger"
+              type="button"
+              aria-haspopup="true"
+              aria-expanded="false"
+              aria-label="Account menu"
+              class="flex items-center rounded-full ring-2 ring-transparent hover:ring-gray-300 focus:outline-none focus:ring-blue-500 dark:hover:ring-gray-600"
+            >
+              {avatarSrc ? (
+                <img
+                  src={avatarSrc}
+                  alt="Your profile"
+                  width="28"
+                  height="28"
+                  class="size-7 rounded-full"
+                />
+              ) : (
+                <span class="flex size-7 items-center justify-center rounded-full bg-gray-200 text-xs font-medium text-gray-600 dark:bg-gray-700 dark:text-gray-300">?</span>
+              )}
+            </button>
+
+            <div
+              id="profile-menu"
+              role="menu"
+              class="absolute right-0 top-full z-50 mt-2 hidden w-44 rounded-md border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-700 dark:bg-gray-900"
+            >
+              <a
+                href={profileHref}
+                role="menuitem"
+                class="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800/50"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                  <circle cx="12" cy="7" r="4"/>
+                </svg>
+                Profile
+              </a>
+              <div class="my-1 border-t border-gray-100 dark:border-gray-800"></div>
+              <div class="px-3 py-2">
+                <p class="mb-1.5 text-xs font-medium text-gray-500 dark:text-gray-400">Theme</p>
+                <div class="flex overflow-hidden rounded border border-gray-200 text-xs dark:border-gray-700">
+                  <button data-theme="light" class="theme-opt flex-1 px-2 py-1.5 text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200">Light</button>
+                  <button data-theme="system" class="theme-opt flex-1 border-x border-gray-200 px-2 py-1.5 text-gray-500 hover:text-gray-800 dark:border-gray-700 dark:text-gray-400 dark:hover:text-gray-200">System</button>
+                  <button data-theme="dark" class="theme-opt flex-1 px-2 py-1.5 text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200">Dark</button>
+                </div>
+              </div>
+            </div>
+          </div>
         </nav>
       </div>
     </header>
@@ -45,3 +100,77 @@ const { title } = Astro.props;
     </main>
   </body>
 </html>
+
+<script>
+  // Dropdown
+  const trigger = document.getElementById('profile-menu-trigger');
+  const menu = document.getElementById('profile-menu');
+
+  trigger?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const isOpen = !menu?.classList.contains('hidden');
+    menu?.classList.toggle('hidden', isOpen);
+    trigger.setAttribute('aria-expanded', String(!isOpen));
+  });
+
+  document.addEventListener('click', () => {
+    menu?.classList.add('hidden');
+    trigger?.setAttribute('aria-expanded', 'false');
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      menu?.classList.add('hidden');
+      trigger?.setAttribute('aria-expanded', 'false');
+    }
+  });
+
+  // Theme segmented control
+  const activeClass = ['bg-gray-100', 'text-gray-900', 'dark:bg-gray-700', 'dark:text-gray-100', 'font-medium'];
+
+  function currentTheme(): 'light' | 'dark' | 'system' {
+    const stored = localStorage.getItem('theme');
+    if (stored === 'light' || stored === 'dark') return stored;
+    return 'system';
+  }
+
+  function applyTheme(theme: 'light' | 'dark' | 'system') {
+    if (theme === 'system') {
+      localStorage.removeItem('theme');
+      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      document.documentElement.classList.toggle('dark', prefersDark);
+    } else {
+      localStorage.setItem('theme', theme);
+      document.documentElement.classList.toggle('dark', theme === 'dark');
+    }
+  }
+
+  function syncButtons() {
+    const active = currentTheme();
+    document.querySelectorAll<HTMLButtonElement>('.theme-opt').forEach((btn) => {
+      const isActive = btn.dataset.theme === active;
+      btn.classList.toggle('bg-gray-100', isActive);
+      btn.classList.toggle('text-gray-900', isActive);
+      btn.classList.toggle('dark:bg-gray-700', isActive);
+      btn.classList.toggle('dark:text-gray-100', isActive);
+      btn.classList.toggle('font-medium', isActive);
+    });
+  }
+
+  syncButtons();
+
+  document.querySelectorAll<HTMLButtonElement>('.theme-opt').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      applyTheme(btn.dataset.theme as 'light' | 'dark' | 'system');
+      syncButtons();
+    });
+  });
+
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+    if (!localStorage.getItem('theme')) {
+      document.documentElement.classList.toggle('dark', e.matches);
+      syncButtons();
+    }
+  });
+</script>

@@ -1,5 +1,11 @@
 export type ArtifactType = 'skill' | 'command' | 'agent' | 'prompt' | 'web-skill';
-export type Surface = 'claude-code' | 'claude-ai' | 'both';
+export type Surface = 'claude-code' | 'claude-ai' | 'all';
+
+export const SURFACE_LABELS: Record<Surface, string> = {
+  'claude-code': 'Claude Code',
+  'claude-ai': 'Claude.ai',
+  'all': 'All Surfaces',
+};
 export type ArtifactStatus = 'draft' | 'pending_review' | 'published' | 'rejected';
 export type ReviewAction = 'approved' | 'changes_requested' | 'rejected';
 
@@ -61,4 +67,14 @@ export interface PiiFlag {
 export interface PiiScanResult {
   flagged: boolean;
   flags: PiiFlag[];
+}
+
+export interface Profile {
+  user_id: string;
+  first_name: string | null;
+  last_name: string | null;
+  department: string | null;
+  bio: string | null;
+  avatar_url: string | null;
+  updated_at: string;
 }
